@@ -151,8 +151,12 @@ void cv_broadcast(struct cv *cv, struct lock *lock);
 
 struct rwlock {
         char *rwlock_name;
-        // add what you need here
-        // (don't forget to mark things volatile as needed)
+        struct wchan *reader_wchan;    /* Wait channel for readers */
+	struct wchan *writer_wchan;    /* Wait channel for writers */
+	struct spinlock rwlock_lock;     /* Spinlock to ensure atmoic operaiton */
+	volatile unsigned readers;     /* The number of readers at the moment */
+	volatile unsigned readers_released; /* The number of readers that released the lock*/
+	struct thread *writer;         /* The writer holding the lock at the moment */
 };
 
 struct rwlock * rwlock_create(const char *);
@@ -166,13 +170,15 @@ void rwlock_destroy(struct rwlock *);
  *    rwlock_acquire_write - Get the lock for writing. Only one thread can
  *                           hold the write lock at one time.
  *    rwlock_release_write - Free the write lock.
- *
+ *    
+ *    reset_readers - Resets the count of the readers after finishing the reading time
  * These operations must be atomic. You get to write them.
  */
 
+#define MAX_READERS 10 /* The maximum number of readers before switching to the writer */
 void rwlock_acquire_read(struct rwlock *);
 void rwlock_release_read(struct rwlock *);
 void rwlock_acquire_write(struct rwlock *);
 void rwlock_release_write(struct rwlock *);
-
+void reset_readers(struct rwlock *); 
 #endif /* _SYNCH_H_ */

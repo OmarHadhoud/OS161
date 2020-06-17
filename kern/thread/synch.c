@@ -312,3 +312,142 @@ cv_broadcast(struct cv *cv, struct lock *lock)
 
 	spinlock_release(&cv->cv_lock);
 }
+///////////////////////////////////rwlock
+struct rwlock*
+rwlock_create(const char *name)
+{
+	struct rwlock *rwlock;
+
+	rwlock = kmalloc(sizeof(*rwlock));
+	if (rwlock == NULL) {
+		return NULL;
+	}
+
+	rwlock->rwlock_name = kstrdup(name);
+	if (rwlock->rwlock_name == NULL) {
+		kfree(rwlock);
+		return NULL;
+	}
+
+	rwlock->reader_wchan = wchan_create(rwlock->rwlock_name);
+	if (rwlock->reader_wchan == NULL) {
+		kfree(rwlock->rwlock_name);
+		kfree(rwlock);
+		return NULL;
+	}
+	
+	rwlock->writer_wchan = wchan_create(rwlock->rwlock_name);
+	if (rwlock->writer_wchan == NULL) {
+		kfree(rwlock->reader_wchan);
+		kfree(rwlock->rwlock_name);
+		kfree(rwlock);
+		return NULL;
+	}
+
+	spinlock_init(&rwlock->rwlock_lock);
+
+	rwlock->readers = 0;
+	rwlock->writer = NULL;
+
+	return rwlock;
+}
+void
+rwlock_destroy(struct rwlock *rwlock)
+{
+	KASSERT(rwlock != NULL);
+	KASSERT(rwlock->writer == NULL);
+	KASSERT(rwlock->readers == 0);
+	
+        /* wchan_cleanup will assert if anyone's waiting on it */
+	spinlock_cleanup(&rwlock->rwlock_lock);
+	wchan_destroy(rwlock->reader_wchan);
+	wchan_destroy(rwlock->writer_wchan);
+	kfree(rwlock->rwlock_name);
+	kfree(rwlock);
+
+}
+void
+rwlock_acquire_read(struct rwlock *rwlock)
+{
+	KASSERT(rwlock != NULL);
+	spinlock_acquire(&rwlock->rwlock_lock);
+
+	//If we are in writing mode or we have reached the maximum readers number
+	while(rwlock->readers > MAX_READERS || rwlock->writer != NULL) {
+		wchan_sleep(rwlock->reader_wchan, &rwlock->rwlock_lock);
+	}
+	rwlock->readers++;
+	KASSERT(rwlock->readers > 0);
+	spinlock_release(&rwlock->rwlock_lock);
+}
+void
+rwlock_release_read(struct rwlock *rwlock)
+{
+	KASSERT(rwlock != NULL);
+	spinlock_acquire(&rwlock->rwlock_lock);
+
+	rwlock->readers_released++;
+	KASSERT(rwlock->readers_released > 0);
+
+	//If we reached the maximum numbers of readers 
+	if(rwlock->readers_released == rwlock->readers) {
+		//Check if we have a writer waiting
+		if(wchan_isempty(rwlock->writer_wchan, &rwlock->rwlock_lock)) {
+			wchan_wakeone(rwlock->writer_wchan, &rwlock->rwlock_lock);
+		} else {
+			reset_readers(rwlock);
+			wchan_wakeone(rwlock->reader_wchan, &rwlock->rwlock_lock);
+		}
+	}
+	spinlock_release(&rwlock->rwlock_lock);
+}
+void
+rwlock_acquire_write(struct rwlock *rwlock)
+{
+	KASSERT(rwlock != NULL);
+	spinlock_acquire(&rwlock->rwlock_lock);
+	
+	//If we are in reading mode or we have a writer already
+	while(rwlock->readers > 0 || rwlock->writer != NULL) {
+		wchan_sleep(rwlock->writer_wchan, &rwlock->rwlock_lock);
+	}
+	rwlock->writer = curthread;
+	KASSERT(rwlock->writer != NULL);
+	//We reset the readers numbers as we finished reading
+	reset_readers(rwlock);
+	KASSERT(rwlock->readers == 0);
+	KASSERT(rwlock->readers_released == 0);
+	
+	spinlock_release(&rwlock->rwlock_lock);
+
+}
+void
+rwlock_release_write(struct rwlock *rwlock)
+{
+	KASSERT(rwlock != NULL);
+	spinlock_acquire(&rwlock->rwlock_lock);
+
+	//Make sure I'm the current writer
+	KASSERT(rwlock->writer == curthread);
+	rwlock->writer = NULL;
+	
+	//Check if we have readers waiting
+	if(wchan_isempty(rwlock->reader_wchan, &rwlock->rwlock_lock)) {
+		wchan_wakeone(rwlock->reader_wchan, &rwlock->rwlock_lock);
+	} else {
+		wchan_wakeone(rwlock->writer_wchan, &rwlock->rwlock_lock);
+	}
+
+	spinlock_release(&rwlock->rwlock_lock);
+	
+}
+void reset_readers(struct rwlock *rwlock)
+{
+	KASSERT(rwlock != NULL);
+	rwlock->readers = 0;
+	rwlock->readers_released = 0;
+}
+
+
+
+
