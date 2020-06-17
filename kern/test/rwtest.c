@@ -13,7 +13,7 @@
 #include <spinlock.h>
 
 #define CREATELOOPS 8
-#define RWLOOPS 100
+#define RWLOOPS 10
 
 /*
  * Use these stubs to test your reader-writer locks.
@@ -22,6 +22,8 @@
 struct spinlock status_lock;
 static struct rwlock *testrw = NULL;
 static struct rwlock *donerw = NULL;
+static struct semaphore *donesem = NULL;
+static struct semaphore *testsem = NULL;
 static bool test_status = TEST161_FAIL;
 
 /*static
@@ -34,6 +36,8 @@ failif(bool condition) {
 	}
 	return condition;
 	}*/
+
+
 
 int rwtest(int nargs, char **args) {
 	(void)nargs;
@@ -77,13 +81,66 @@ int rwtest(int nargs, char **args) {
 	
 	return 0;
 }
+static
+void
+rwtestthread( void *junk, unsigned long i)
+{
+	(void)junk;
+
+	if(RWLOOPS-i < RWLOOPS/5){
+		kprintf_n("Thread #%ld requesting the write lock\n",i);
+		rwlock_acquire_write(testrw);
+		kprintf_n("Thread #%ld granted the write lock!\n",i);
+       	        kprintf_n("Ok\n");
+	        kprintf_t(".");
+		kprintf_n("Thread #%ld is releasing the write lock\n",i);
+		rwlock_release_write(testrw);
+	        kprintf_n("Thread #%ld released the write lock.\n",i);
+	} else {
+		kprintf_n("Thread #%ld requesting the read lock!\n",i);
+		rwlock_acquire_read(testrw);
+		kprintf_n("Thread #%ld granted the read lock\n",i);
+       	        kprintf_n("Ok\n");
+	        kprintf_t(".");
+		kprintf_n("Thread #%ld is releasing the read lock!\n",i);
+		rwlock_release_read(testrw);
+	        kprintf_n("Thread #%ld released the read lock!\n",i);
+	}
+       	V(donesem);
+	return;
+}
 
 int rwtest2(int nargs, char **args) {
 	(void)nargs;
 	(void)args;
+	
+	int result, i;
+	testrw = rwlock_create("testrwlock");
+	donesem = sem_create("donesem",0);
+	testsem = sem_create("testsem",0);
+	rwlock_acquire_write(testrw);
+	kprintf("FIRST WRITER ACQUIRED THE LOCK\n");
+	/* Fork a number of writers and reader threads */
+	for(i = 0; i < RWLOOPS; i++)
+	{
+		result = thread_fork("rwtest2", NULL, rwtestthread, NULL, i);
+		if (result) {
+			panic("rwt2: thread_fork failed: %s\n", strerror(result));
+		}
+	}
+	kprintf("RELEASINGGG\n");
+	rwlock_release_write(testrw);
+	for(int i = 0; i < RWLOOPS; i++){
+		P(donesem);
+	}
+	rwlock_destroy(testrw);
+	sem_destroy(donesem);
+	sem_destroy(testsem);
+	donesem = testsem = NULL;
+	testrw = NULL;
 
-	kprintf_n("rwt2 unimplemented\n");
-	success(TEST161_FAIL, SECRET, "rwt2");
+	kprintf_t("\n");
+	success(test_status, SECRET, "rwt2");
 
 	return 0;
 }
