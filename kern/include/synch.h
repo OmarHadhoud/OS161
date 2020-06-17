@@ -116,7 +116,7 @@ bool lock_do_i_hold(struct lock *);
 struct cv {
         char *cv_name;
 	struct wchan *cv_wchan;       /* Wait channel used for the cv */
-	struct spinlock cv_lock;      /* Spin lock used to ensure atomic functions */
+	struct spinlock cv_lock;      /* Spin lock to ensure atomic functions */
 };
 
 struct cv *cv_create(const char *name);
