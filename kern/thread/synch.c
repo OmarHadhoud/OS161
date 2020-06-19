@@ -386,16 +386,17 @@ rwlock_release_read(struct rwlock *rwlock)
 	KASSERT(rwlock != NULL);
 	spinlock_acquire(&rwlock->rwlock_lock);
 
+	KASSERT(rwlock->readers > 0);
 	rwlock->readers_released++;
 	KASSERT(rwlock->readers_released > 0);
 
-	//If we reached the maximum numbers of readers 
+	//If we reached the maximum numbers of readers or finished all readers 
 	if(rwlock->readers_released == rwlock->readers) {
+		reset_readers(rwlock);
 		//Check if we have a writer waiting
-		if(wchan_isempty(rwlock->writer_wchan, &rwlock->rwlock_lock)) {
+		if(!wchan_isempty(rwlock->writer_wchan, &rwlock->rwlock_lock)) {
 			wchan_wakeone(rwlock->writer_wchan, &rwlock->rwlock_lock);
 		} else {
-			reset_readers(rwlock);
 			wchan_wakeone(rwlock->reader_wchan, &rwlock->rwlock_lock);
 		}
 	}
@@ -432,8 +433,8 @@ rwlock_release_write(struct rwlock *rwlock)
 	rwlock->writer = NULL;
 	
 	//Check if we have readers waiting
-	if(wchan_isempty(rwlock->reader_wchan, &rwlock->rwlock_lock)) {
-		wchan_wakeone(rwlock->reader_wchan, &rwlock->rwlock_lock);
+	if(!wchan_isempty(rwlock->reader_wchan, &rwlock->rwlock_lock)) {
+		wchan_wakeall(rwlock->reader_wchan, &rwlock->rwlock_lock);
 	} else {
 		wchan_wakeone(rwlock->writer_wchan, &rwlock->rwlock_lock);
 	}

@@ -13,7 +13,7 @@
 #include <spinlock.h>
 
 #define CREATELOOPS 8
-#define RWLOOPS 10
+#define RWLOOPS 100
 
 /*
  * Use these stubs to test your reader-writer locks.
@@ -42,7 +42,8 @@ failif(bool condition) {
 int rwtest(int nargs, char **args) {
 	(void)nargs;
 	(void)args;
-	
+
+	kprintf_n("Starting rwt1...\n");
 	struct spinlock status_lock;
 
 	for(int i = 0; i < CREATELOOPS; i++) {
@@ -87,7 +88,8 @@ rwtestthread( void *junk, unsigned long i)
 {
 	(void)junk;
 
-	if(RWLOOPS-i < RWLOOPS/5){
+        if(RWLOOPS-i < RWLOOPS/5){
+		clocksleep(2);
 		kprintf_n("Thread #%ld requesting the write lock\n",i);
 		rwlock_acquire_write(testrw);
 		kprintf_n("Thread #%ld granted the write lock!\n",i);
@@ -102,6 +104,7 @@ rwtestthread( void *junk, unsigned long i)
 		kprintf_n("Thread #%ld granted the read lock\n",i);
        	        kprintf_n("Ok\n");
 	        kprintf_t(".");
+		clocksleep(4);
 		kprintf_n("Thread #%ld is releasing the read lock!\n",i);
 		rwlock_release_read(testrw);
 	        kprintf_n("Thread #%ld released the read lock!\n",i);
@@ -113,8 +116,10 @@ rwtestthread( void *junk, unsigned long i)
 int rwtest2(int nargs, char **args) {
 	(void)nargs;
 	(void)args;
-	
+
+	kprintf_n("Starting rwt2...\n");
 	int result, i;
+	test_status = TEST161_SUCCESS;
 	testrw = rwlock_create("testrwlock");
 	donesem = sem_create("donesem",0);
 	testsem = sem_create("testsem",0);
@@ -128,7 +133,9 @@ int rwtest2(int nargs, char **args) {
 			panic("rwt2: thread_fork failed: %s\n", strerror(result));
 		}
 	}
-	kprintf("RELEASINGGG\n");
+	kprintf("Parent sleeping....\n");
+	clocksleep(8);
+	kprintf("Paren AWAKEN and releasing the write lock\n");
 	rwlock_release_write(testrw);
 	for(int i = 0; i < RWLOOPS; i++){
 		P(donesem);
@@ -144,33 +151,68 @@ int rwtest2(int nargs, char **args) {
 
 	return 0;
 }
-
+/*
+ * Note that the following tests panic on success.
+ */
 int rwtest3(int nargs, char **args) {
 	(void)nargs;
 	(void)args;
+	
+	kprintf_n("Starting rwt3...\n");
+	kprintf_n("(This test panics on success!)\n");
+	
+	testrw = rwlock_create("testrwlock");
+	if (testrw == NULL) {
+		panic("rwt3: rwlock_create failed\n");
+	}
 
-	kprintf_n("rwt3 unimplemented\n");
+	secprintf(SECRET, "Should panic...", "rwt3");
+	rwlock_release_write(testrw);
+	/* Should not get here on success. */
+	
 	success(TEST161_FAIL, SECRET, "rwt3");
-
+	testrw = NULL;
 	return 0;
 }
 
 int rwtest4(int nargs, char **args) {
 	(void)nargs;
 	(void)args;
-
-	kprintf_n("rwt4 unimplemented\n");
+	
+	kprintf_n("Starting rwt4...\n");
+	kprintf_n("(This test panics on success!)\n");
+	
+	testrw = rwlock_create("testrwlock");
+	if (testrw == NULL) {
+		panic("rwt4: rwlock_create failed\n");
+	}
+	
+	secprintf(SECRET, "Should panic...", "rwt4");
+	rwlock_release_read(testrw);
+	/* Should not get here on success. */
+	
 	success(TEST161_FAIL, SECRET, "rwt4");
-
+	testrw = NULL;
 	return 0;
 }
 
 int rwtest5(int nargs, char **args) {
 	(void)nargs;
 	(void)args;
-
-	kprintf_n("rwt5 unimplemented\n");
+	
+	kprintf_n("Starting rwt5...\n");
+	kprintf_n("(This test panics on success!)\n");
+	
+	testrw = rwlock_create("testrwlock");
+	if (testrw == NULL) {
+		panic("rwt5: rwlock_create failed\n");
+	}
+	secprintf(SECRET, "Should panic...", "rwt5");
+	rwlock_acquire_write(testrw);
+	rwlock_destroy(testrw);
+	/* Should not get here on success. */
+	
 	success(TEST161_FAIL, SECRET, "rwt5");
-
+	testrw = NULL;
 	return 0;
 }
