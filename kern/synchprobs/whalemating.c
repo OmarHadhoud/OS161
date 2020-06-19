@@ -40,12 +40,62 @@
 #include <test.h>
 #include <synch.h>
 
+/* Semaphores needed for the matchmaking problem*/
+struct semaphore *males = NULL;
+struct lock *male_lock = NULL;
+struct semaphore *females = NULL;
+struct lock *female_lock = NULL;
+struct semaphore *matchmakers = NULL;
+struct lock *matchmaker_lock = NULL;
 /*
  * Called by the driver during initialization.
  */
 
 void whalemating_init() {
-	return;
+	males = sem_create("Males",0);
+	if (males == NULL){
+		panic("Couldn't create the males semaphore!\n");
+	}
+	
+	females = sem_create("Females",0);
+	if (females == NULL){
+		kfree(males);
+		panic("Couldn't create the females semaphore!\n");
+	}
+	
+	matchmakers = sem_create("Matchmakers",0);
+	if (matchmakers == NULL){
+		kfree(males);
+		kfree(females);
+		panic("Couldn't create the matchmakers semaphore!\n");
+	}
+
+	male_lock = lock_create("Male lock");
+	if (male_lock == NULL) {
+		kfree(males);
+		kfree(females);
+		kfree(matchmakers);
+		panic("Couldn't create the male lock!\n");
+	}
+
+	female_lock = lock_create("Female lock");
+	if (female_lock == NULL) {
+		kfree(males);
+		kfree(females);
+		kfree(matchmakers);
+		kfree(male_lock);
+		panic("Couldn't create the female lock!\n");
+	}
+
+	matchmaker_lock = lock_create("Matchmaker lock");
+	if (matchmaker_lock == NULL) {
+		kfree(males);
+		kfree(females);
+		kfree(matchmakers);
+		kfree(male_lock);
+		kfree(female_lock);
+		panic("Couldn't create the Matchmaker lock!\n");
+	}
 }
 
 /*
@@ -54,38 +104,56 @@ void whalemating_init() {
 
 void
 whalemating_cleanup() {
+	sem_destroy(males);
+	sem_destroy(females);
+	sem_destroy(matchmakers);
+        lock_destroy(male_lock);
+	lock_destroy(female_lock);
+	lock_destroy(matchmaker_lock);
 	return;
 }
 
 void
 male(uint32_t index)
 {
-	(void)index;
-	/*
-	 * Implement this function by calling male_start and male_end when
-	 * appropriate.
-	 */
+        (void) index;
+	male_start((uint32_t)index);
+	V(males);
+	V(males);
+	lock_acquire(male_lock);
+	P(females);
+	P(matchmakers);
+	lock_release(male_lock);
+	male_end((uint32_t)index);
 	return;
 }
 
 void
 female(uint32_t index)
 {
-	(void)index;
-	/*
-	 * Implement this function by calling female_start and female_end when
-	 * appropriate.
-	 */
+        (void) index;
+	female_start((uint32_t)index);
+	V(females);
+	V(females);
+	lock_acquire(female_lock);
+	P(males);
+	P(matchmakers);
+	lock_release(female_lock);
+	female_end((uint32_t)index);
 	return;
 }
 
 void
 matchmaker(uint32_t index)
 {
-	(void)index;
-	/*
-	 * Implement this function by calling matchmaker_start and matchmaker_end
-	 * when appropriate.
-	 */
+	(void) index;
+	matchmaker_start((uint32_t)index);
+	V(matchmakers);
+	V(matchmakers);
+	lock_acquire(matchmaker_lock);
+	P(females);
+	P(males);
+	lock_release(matchmaker_lock);
+	matchmaker_end((uint32_t)index);
 	return;
 }
